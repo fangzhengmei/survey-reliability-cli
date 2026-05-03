@@ -1,0 +1,22 @@
+[project]
+name = "survey-reliability"
+version = "0.1.0"
+description = "问卷量表信度分析 CLI 工具"
+requires-python = ">=3.9"
+dependencies = [
+    "pandas>=2.0.0",
+    "click>=8.0.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+survey-reliability = "survey_reliability.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
