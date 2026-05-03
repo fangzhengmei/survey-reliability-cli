@@ -108,14 +108,17 @@ def alpha(
             if item not in items:
                 raise click.ClickException(f"反向题项 {item} 不在题项列表中")
     
-    result = cronbach_alpha(
-        df=df,
-        item_cols=items,
-        reverse_items=reverse_items,
-        min_val=min_val,
-        max_val=max_val,
-        missing_method=missing_method
-    )
+    try:
+        result = cronbach_alpha(
+            df=df,
+            item_cols=items,
+            reverse_items=reverse_items,
+            min_val=min_val,
+            max_val=max_val,
+            missing_method=missing_method
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e))
     
     report = generate_report(result, scale_name)
     
@@ -224,14 +227,17 @@ def score(
             if item not in items:
                 raise click.ClickException(f"反向题项 {item} 不在题项列表中")
     
-    result = calculate_scale_scores(
-        df=df,
-        item_cols=items,
-        reverse_items=reverse_items,
-        min_val=min_val,
-        max_val=max_val,
-        missing_method=missing_method
-    )
+    try:
+        result = calculate_scale_scores(
+            df=df,
+            item_cols=items,
+            reverse_items=reverse_items,
+            min_val=min_val,
+            max_val=max_val,
+            missing_method=missing_method
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e))
     
     if not keep_processed:
         processed_cols = [f"{col}_processed" for col in items]

@@ -7,8 +7,158 @@ from survey_reliability.reliability import (
     impute_missing,
     calculate_scale_scores,
     cronbach_alpha,
-    generate_report
+    generate_report,
+    validate_scale_range,
+    validate_item_values
 )
+
+
+class TestValidateScaleRange:
+    def test_validate_scale_range_min_greater_than_max(self):
+        with pytest.raises(ValueError, match="min-val.*不能大于 max-val"):
+            validate_scale_range(min_val=5, max_val=1)
+    
+    def test_validate_scale_range_min_greater_than_max_2(self):
+        with pytest.raises(ValueError) as exc_info:
+            validate_scale_range(min_val=7, max_val=5)
+        assert "min-val (7) 不能大于 max-val (5)" in str(exc_info.value)
+    
+    def test_validate_scale_range_min_equals_max(self):
+        with pytest.raises(ValueError, match="min-val.*不能等于 max-val"):
+            validate_scale_range(min_val=3, max_val=3)
+    
+    def test_validate_scale_range_min_equals_max_2(self):
+        with pytest.raises(ValueError) as exc_info:
+            validate_scale_range(min_val=5, max_val=5)
+        assert "min-val (5) 不能等于 max-val (5)" in str(exc_info.value)
+    
+    def test_validate_scale_range_valid(self):
+        validate_scale_range(min_val=1, max_val=5)
+        validate_scale_range(min_val=1, max_val=7)
+        validate_scale_range(min_val=0, max_val=10)
+        validate_scale_range(min_val=-3, max_val=3)
+
+
+class TestValidateItemValues:
+    def test_validate_item_values_below_min(self):
+        df = pd.DataFrame({
+            "q1": [0, 2, 3, 4, 5],
+            "q2": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="题项分数超出量表范围"):
+            validate_item_values(df, item_cols, min_val=1, max_val=5)
+    
+    def test_validate_item_values_above_max(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3, 4, 5],
+            "q2": [1, 2, 6, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError) as exc_info:
+            validate_item_values(df, item_cols, min_val=1, max_val=5)
+        
+        assert "q2" in str(exc_info.value)
+        assert "大于 5" in str(exc_info.value)
+    
+    def test_validate_item_values_both_below_and_above(self):
+        df = pd.DataFrame({
+            "q1": [0, 2, 3, 4, 6],
+            "q2": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError) as exc_info:
+            validate_item_values(df, item_cols, min_val=1, max_val=5)
+        
+        error_msg = str(exc_info.value)
+        assert "q1" in error_msg
+        assert "小于 1" in error_msg
+        assert "大于 5" in error_msg
+    
+    def test_validate_item_values_multiple_items(self):
+        df = pd.DataFrame({
+            "q1": [0, 2, 3, 4, 5],
+            "q2": [1, 2, 3, 4, 6],
+            "q3": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2", "q3"]
+        
+        with pytest.raises(ValueError) as exc_info:
+            validate_item_values(df, item_cols, min_val=1, max_val=5)
+        
+        error_msg = str(exc_info.value)
+        assert "q1" in error_msg
+        assert "q2" in error_msg
+    
+    def test_validate_item_values_boundary_values(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3, 4, 5],
+            "q2": [1, 1, 5, 5, 3]
+        })
+        item_cols = ["q1", "q2"]
+        
+        result = validate_item_values(df, item_cols, min_val=1, max_val=5)
+        assert result is None
+    
+    def test_validate_item_values_with_nan(self):
+        df = pd.DataFrame({
+            "q1": [1, np.nan, 3, 4, 5],
+            "q2": [np.nan, 2, 3, np.nan, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        result = validate_item_values(df, item_cols, min_val=1, max_val=5)
+        assert result is None
+    
+    def test_validate_item_values_non_strict_mode(self):
+        df = pd.DataFrame({
+            "q1": [0, 2, 3, 4, 6],
+            "q2": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        result = validate_item_values(df, item_cols, min_val=1, max_val=5, strict=False)
+        
+        assert result is not None
+        assert "out_of_range_items" in result
+        assert "total_out_of_range_count" in result
+        assert len(result["out_of_range_items"]) == 1
+        assert result["total_out_of_range_count"] == 2
+        
+        q1_info = result["out_of_range_items"][0]
+        assert q1_info["item"] == "q1"
+        assert q1_info["below_min_count"] == 1
+        assert q1_info["above_max_count"] == 1
+        assert q1_info["min_observed"] == 0
+        assert q1_info["max_observed"] == 6
+    
+    def test_validate_item_values_all_valid(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3, 4, 5],
+            "q2": [2, 3, 4, 5, 1],
+            "q3": [3, 3, 3, 3, 3]
+        })
+        item_cols = ["q1", "q2", "q3"]
+        
+        result = validate_item_values(df, item_cols, min_val=1, max_val=5)
+        assert result is None
+    
+    def test_validate_item_values_different_range(self):
+        df = pd.DataFrame({
+            "q1": [0, 5, 7, 10, 3],
+            "q2": [1, 2, 11, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError) as exc_info:
+            validate_item_values(df, item_cols, min_val=1, max_val=10)
+        
+        error_msg = str(exc_info.value)
+        assert "q1" in error_msg or "q2" in error_msg
+        assert "小于 1" in error_msg or "大于 10" in error_msg
 
 
 class TestReverseScore:
@@ -70,6 +220,28 @@ class TestProcessReverseItems:
         process_reverse_items(df, item_cols, reverse_items, min_val=1, max_val=5)
         
         pd.testing.assert_frame_equal(df, original)
+    
+    def test_process_reverse_items_invalid_range_min_gt_max(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3],
+            "q2": [4, 5, 1]
+        })
+        item_cols = ["q1", "q2"]
+        reverse_items = ["q2"]
+        
+        with pytest.raises(ValueError, match="min-val.*不能大于 max-val"):
+            process_reverse_items(df, item_cols, reverse_items, min_val=5, max_val=1)
+    
+    def test_process_reverse_items_invalid_range_min_eq_max(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3],
+            "q2": [4, 5, 1]
+        })
+        item_cols = ["q1", "q2"]
+        reverse_items = ["q2"]
+        
+        with pytest.raises(ValueError, match="min-val.*不能等于 max-val"):
+            process_reverse_items(df, item_cols, reverse_items, min_val=3, max_val=3)
 
 
 class TestImputeMissing:
@@ -213,6 +385,50 @@ class TestCalculateScaleScores:
         calculate_scale_scores(df, item_cols)
         
         pd.testing.assert_frame_equal(df, original)
+    
+    def test_calculate_scale_scores_invalid_range_min_gt_max(self):
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "q1": [1, 2, 3],
+            "q2": [4, 5, 1]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="min-val.*不能大于 max-val"):
+            calculate_scale_scores(df, item_cols, min_val=5, max_val=1)
+    
+    def test_calculate_scale_scores_invalid_range_min_eq_max(self):
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "q1": [1, 2, 3],
+            "q2": [4, 5, 1]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="min-val.*不能等于 max-val"):
+            calculate_scale_scores(df, item_cols, min_val=3, max_val=3)
+    
+    def test_calculate_scale_scores_values_below_min(self):
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "q1": [0, 2, 3],
+            "q2": [4, 5, 1]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="题项分数超出量表范围"):
+            calculate_scale_scores(df, item_cols, min_val=1, max_val=5)
+    
+    def test_calculate_scale_scores_values_above_max(self):
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "q1": [1, 2, 3],
+            "q2": [4, 6, 1]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="题项分数超出量表范围"):
+            calculate_scale_scores(df, item_cols, min_val=1, max_val=5)
 
 
 class TestCronbachAlpha:
@@ -325,6 +541,59 @@ class TestCronbachAlpha:
         
         assert result["alpha"] == 0.0
         assert "note" in result
+    
+    def test_cronbach_alpha_invalid_range_min_gt_max(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3, 4, 5],
+            "q2": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="min-val.*不能大于 max-val"):
+            cronbach_alpha(df, item_cols, min_val=5, max_val=1)
+    
+    def test_cronbach_alpha_invalid_range_min_eq_max(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3, 4, 5],
+            "q2": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="min-val.*不能等于 max-val"):
+            cronbach_alpha(df, item_cols, min_val=3, max_val=3)
+    
+    def test_cronbach_alpha_values_below_min(self):
+        df = pd.DataFrame({
+            "q1": [0, 2, 3, 4, 5],
+            "q2": [1, 2, 3, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="题项分数超出量表范围"):
+            cronbach_alpha(df, item_cols, min_val=1, max_val=5)
+    
+    def test_cronbach_alpha_values_above_max(self):
+        df = pd.DataFrame({
+            "q1": [1, 2, 3, 4, 5],
+            "q2": [1, 2, 6, 4, 5]
+        })
+        item_cols = ["q1", "q2"]
+        
+        with pytest.raises(ValueError, match="题项分数超出量表范围"):
+            cronbach_alpha(df, item_cols, min_val=1, max_val=5)
+    
+    def test_cronbach_alpha_boundary_values(self):
+        df = pd.DataFrame({
+            "q1": [1, 1, 5, 5, 3],
+            "q2": [1, 5, 1, 5, 3],
+            "q3": [3, 3, 3, 3, 3]
+        })
+        item_cols = ["q1", "q2", "q3"]
+        
+        result = cronbach_alpha(df, item_cols, min_val=1, max_val=5)
+        
+        assert "alpha" in result
+        assert result["sample_size"] == 5
 
 
 class TestGenerateReport:

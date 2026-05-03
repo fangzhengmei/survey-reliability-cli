@@ -199,6 +199,78 @@ class TestCLIBasic:
             
             assert result.exit_code != 0
             assert "不支持的文件格式" in result.output
+    
+    def test_alpha_command_invalid_range_min_gt_max(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test_data.csv"
+            self.df.to_csv(csv_path, index=False)
+            
+            result = self.runner.invoke(
+                main,
+                [
+                    "alpha",
+                    str(csv_path),
+                    "-i",
+                    ",".join(self.item_cols),
+                    "--min-val",
+                    "5",
+                    "--max-val",
+                    "1"
+                ]
+            )
+            
+            assert result.exit_code != 0
+            assert "min-val" in result.output
+            assert "max-val" in result.output
+    
+    def test_alpha_command_invalid_range_min_eq_max(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test_data.csv"
+            self.df.to_csv(csv_path, index=False)
+            
+            result = self.runner.invoke(
+                main,
+                [
+                    "alpha",
+                    str(csv_path),
+                    "-i",
+                    ",".join(self.item_cols),
+                    "--min-val",
+                    "3",
+                    "--max-val",
+                    "3"
+                ]
+            )
+            
+            assert result.exit_code != 0
+            assert "min-val" in result.output
+            assert "max-val" in result.output
+    
+    def test_alpha_command_values_out_of_range(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            df_invalid = self.df.copy()
+            df_invalid.loc[0, "q1"] = 0
+            df_invalid.loc[1, "q2"] = 6
+            
+            csv_path = Path(tmpdir) / "test_data.csv"
+            df_invalid.to_csv(csv_path, index=False)
+            
+            result = self.runner.invoke(
+                main,
+                [
+                    "alpha",
+                    str(csv_path),
+                    "-i",
+                    ",".join(self.item_cols),
+                    "--min-val",
+                    "1",
+                    "--max-val",
+                    "5"
+                ]
+            )
+            
+            assert result.exit_code != 0
+            assert "超出量表范围" in result.output
 
 
 class TestCLIScore:
@@ -405,3 +477,84 @@ class TestCLIScore:
             scored_df = pd.read_csv(output_path)
             
             assert len(scored_df) == len(self.df) - 2
+    
+    def test_score_command_invalid_range_min_gt_max(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test_data.csv"
+            self.df.to_csv(csv_path, index=False)
+            output_path = Path(tmpdir) / "scored.csv"
+            
+            result = self.runner.invoke(
+                main,
+                [
+                    "score",
+                    str(csv_path),
+                    "-i",
+                    ",".join(self.item_cols),
+                    "--min-val",
+                    "5",
+                    "--max-val",
+                    "1",
+                    "-o",
+                    str(output_path)
+                ]
+            )
+            
+            assert result.exit_code != 0
+            assert "min-val" in result.output
+            assert "max-val" in result.output
+    
+    def test_score_command_invalid_range_min_eq_max(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test_data.csv"
+            self.df.to_csv(csv_path, index=False)
+            output_path = Path(tmpdir) / "scored.csv"
+            
+            result = self.runner.invoke(
+                main,
+                [
+                    "score",
+                    str(csv_path),
+                    "-i",
+                    ",".join(self.item_cols),
+                    "--min-val",
+                    "3",
+                    "--max-val",
+                    "3",
+                    "-o",
+                    str(output_path)
+                ]
+            )
+            
+            assert result.exit_code != 0
+            assert "min-val" in result.output
+            assert "max-val" in result.output
+    
+    def test_score_command_values_out_of_range(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            df_invalid = self.df.copy()
+            df_invalid.loc[0, "q1"] = 0
+            df_invalid.loc[1, "q2"] = 6
+            
+            csv_path = Path(tmpdir) / "test_data.csv"
+            df_invalid.to_csv(csv_path, index=False)
+            output_path = Path(tmpdir) / "scored.csv"
+            
+            result = self.runner.invoke(
+                main,
+                [
+                    "score",
+                    str(csv_path),
+                    "-i",
+                    ",".join(self.item_cols),
+                    "--min-val",
+                    "1",
+                    "--max-val",
+                    "5",
+                    "-o",
+                    str(output_path)
+                ]
+            )
+            
+            assert result.exit_code != 0
+            assert "超出量表范围" in result.output

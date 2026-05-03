@@ -3,6 +3,112 @@ import numpy as np
 from typing import List, Optional, Dict, Any
 
 
+def validate_scale_range(
+    min_val: int,
+    max_val: int
+) -> None:
+    """
+    校验量表范围的合法性
+    
+    Args:
+        min_val: 最小可能值
+        max_val: 最大可能值
+        
+    Raises:
+        ValueError: 当 min_val > max_val 或 min_val == max_val 时
+    """
+    if min_val > max_val:
+        raise ValueError(
+            f"量表范围不合法：min-val ({min_val}) 不能大于 max-val ({max_val})"
+        )
+    if min_val == max_val:
+        raise ValueError(
+            f"量表范围不合法：min-val ({min_val}) 不能等于 max-val ({max_val})，量表至少需要两个不同的值"
+        )
+
+
+def validate_item_values(
+    df: pd.DataFrame,
+    item_cols: List[str],
+    min_val: int,
+    max_val: int,
+    strict: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    校验题项分数是否在量表范围内
+    
+    Args:
+        df: 数据框
+        item_cols: 题项列名列表
+        min_val: 最小可能值
+        max_val: 最大可能值
+        strict: 是否严格模式（严格模式下超出范围会抛出异常，否则返回警告信息）
+        
+    Returns:
+        如果非严格模式且有超出范围的值，返回包含警告信息的字典；否则返回 None
+        
+    Raises:
+        ValueError: 严格模式下，当题项分数超出 [min_val, max_val] 范围时
+    """
+    validation_results = {
+        "out_of_range_items": [],
+        "total_out_of_range_count": 0
+    }
+    
+    for col in item_cols:
+        if col not in df.columns:
+            continue
+        
+        col_data = df[col].dropna()
+        
+        if len(col_data) == 0:
+            continue
+        
+        below_min = col_data < min_val
+        above_max = col_data > max_val
+        
+        below_count = int(below_min.sum())
+        above_count = int(above_max.sum())
+        
+        if below_count > 0 or above_count > 0:
+            min_observed = float(col_data.min())
+            max_observed = float(col_data.max())
+            
+            validation_results["out_of_range_items"].append({
+                "item": col,
+                "below_min_count": below_count,
+                "above_max_count": above_count,
+                "min_observed": min_observed,
+                "max_observed": max_observed
+            })
+            validation_results["total_out_of_range_count"] += below_count + above_count
+    
+    if validation_results["total_out_of_range_count"] > 0:
+        if strict:
+            error_details = []
+            for item_info in validation_results["out_of_range_items"]:
+                details = []
+                if item_info["below_min_count"] > 0:
+                    details.append(f"{item_info['below_min_count']} 个值小于 {min_val}")
+                if item_info["above_max_count"] > 0:
+                    details.append(f"{item_info['above_max_count']} 个值大于 {max_val}")
+                details_str = "，".join(details)
+                error_details.append(
+                    f"题项 '{item_info['item']}': {details_str} "
+                    f"(观测范围: {item_info['min_observed']} - {item_info['max_observed']})"
+                )
+            
+            raise ValueError(
+                f"题项分数超出量表范围 [min-val={min_val}, max-val={max_val}]，"
+                f"共发现 {validation_results['total_out_of_range_count']} 个异常值。\n"
+                + "\n".join(error_details)
+            )
+        else:
+            return validation_results
+    
+    return None
+
+
 def reverse_score(
     values: np.ndarray,
     min_val: int,
@@ -44,6 +150,8 @@ def process_reverse_items(
     Returns:
         处理后的数据框
     """
+    validate_scale_range(min_val, max_val)
+    
     processed = df.copy()
     
     if reverse_items is None:
@@ -106,9 +214,11 @@ def calculate_scale_scores(
     计算量表得分
     
     流程：
-    1. 缺失值插补
-    2. 反向题处理
-    3. 计算总分和平均分
+    1. 校验量表范围合法性
+    2. 校验题项分数范围
+    3. 缺失值插补
+    4. 反向题处理
+    5. 计算总分和平均分
     
     Args:
         df: 数据框
@@ -125,6 +235,9 @@ def calculate_scale_scores(
         - scale_total: 总分
         - scale_mean: 平均分
     """
+    validate_scale_range(min_val, max_val)
+    validate_item_values(df, item_cols, min_val, max_val)
+    
     result = df.copy()
     
     result = impute_missing(result, item_cols, missing_method)
@@ -175,6 +288,9 @@ def cronbach_alpha(
         - item_stats: 每个题项的统计信息
         - alpha_if_deleted: 删除该题项后的 α 系数
     """
+    validate_scale_range(min_val, max_val)
+    validate_item_values(df, item_cols, min_val, max_val)
+    
     data = df.copy()
     data = impute_missing(data, item_cols, missing_method)
     data = process_reverse_items(data, item_cols, reverse_items, min_val, max_val)
